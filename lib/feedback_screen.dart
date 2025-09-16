@@ -1,0 +1,160 @@
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+class FeedbackScreen extends StatefulWidget {
+  const FeedbackScreen({super.key});
+
+  @override
+  State<FeedbackScreen> createState() => _FeedbackScreenState();
+}
+
+class _FeedbackScreenState extends State<FeedbackScreen> {
+  final TextEditingController _controller = TextEditingController();
+  final uid = FirebaseAuth.instance.currentUser!.uid;
+  String? editingId;
+
+  void submitFeedback() async {
+    final message = _controller.text.trim();
+    if (message.isEmpty) return;
+
+    if (editingId != null) {
+      // Edit existing feedback
+      await FirebaseFirestore.instance
+          .collection('feedbacks')
+          .doc(editingId)
+          .update({'message': message});
+    } else {
+      // Add new feedback with status
+      await FirebaseFirestore.instance.collection('feedbacks').add({
+        'user_id': uid,
+        'message': message,
+        'timestamp': Timestamp.now(),
+        'status': 'unread',
+      });
+    }
+
+    _controller.clear();
+    setState(() => editingId = null);
+  }
+
+  void deleteFeedback(String id) async {
+    await FirebaseFirestore.instance.collection('feedbacks').doc(id).delete();
+  }
+
+  void startEditing(String id, String message) {
+    _controller.text = message;
+    setState(() => editingId = id);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final feedbackStream = FirebaseFirestore.instance
+        .collection('feedbacks')
+        .where('user_id', isEqualTo: uid)
+        .orderBy('timestamp', descending: true)
+        .snapshots();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Your Feedback'),
+        backgroundColor: const Color(0xFF6A1B9A), // Deep purple
+      ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFFF3E5F5), Color(0xFFE1BEE7)], // Light purple blend
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              TextField(
+                controller: _controller,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: 'Write your feedback...',
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: submitFeedback,
+                icon: Icon(editingId != null ? Icons.edit : Icons.send),
+                label: Text(editingId != null ? 'Update Feedback' : 'Send Feedback'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF8E24AA), // Purple
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Divider(),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Your Previous Feedback',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: feedbackStream,
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    final docs = snapshot.data!.docs;
+
+                    if (docs.isEmpty) {
+                      return const Text('You haven’t submitted any feedback yet.');
+                    }
+
+                    return ListView(
+                      children: docs.map((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        final message = data['message'] ?? '';
+                        final timestamp = (data['timestamp'] as Timestamp).toDate();
+
+                        return Card(
+                          margin: const EdgeInsets.symmetric(vertical: 6),
+                          child: ListTile(
+                            title: Text(message),
+                            subtitle: Text(
+                              'Sent on ${timestamp.day}/${timestamp.month}/${timestamp.year}',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit, color: Colors.deepPurple),
+                                  onPressed: () => startEditing(doc.id, message),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete, color: Colors.red),
+                                  onPressed: () => deleteFeedback(doc.id),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
