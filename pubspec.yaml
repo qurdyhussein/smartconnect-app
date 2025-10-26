@@ -43,12 +43,14 @@ dependencies:
   permission_handler: ^11.0.1
   csv: ^5.0.2
   pdf: ^3.10.8
-  printing: ^5.12.0
+  #printing: ^5.10.0
   share_plus: ^7.2.1
   open_file: ^3.2.1
   firebase_messaging: ^14.0.0
   animate_do: ^3.0.2
   webview_flutter: ^4.2.2
+  shimmer: ^2.0.0
+
 
   
   
@@ -105,7 +107,6 @@ flutter:
     - assets/payments/mpesa_card.png
     - assets/payments/tigo_card.png
     - assets/payments/airtel_card.png
-    - assets/payments/halopesa_card.png
     - assets/payments/cash_card.png 
     - assets/icon/help.png
     - assets/icon/profile_bg.jpg

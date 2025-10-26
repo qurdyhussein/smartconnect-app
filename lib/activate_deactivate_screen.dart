@@ -100,19 +100,19 @@ class _ActivateDeactivateScreenState extends State<ActivateDeactivateScreen>
                 final allDocs = snapshot.data!.docs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
                   final name = (data['full_name'] ?? '').toString().toLowerCase();
-                  final isAdmin = data.containsKey('is_admin') ? data['is_admin'] == true : false;
+                  final isAdmin = data['is_admin'] == true;
                   return name.contains(_searchQuery) &&
                       (!_showAdminsOnly || isAdmin);
                 }).toList();
 
                 final activeDocs = allDocs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
-                  return data.containsKey('is_active') ? data['is_active'] == true : false;
+                  return data['is_active'] == true;
                 }).toList();
 
                 final inactiveDocs = allDocs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
-                  return data.containsKey('is_active') ? data['is_active'] == false : false;
+                  return data['is_active'] == false;
                 }).toList();
 
                 final tabs = [allDocs, activeDocs, inactiveDocs];
@@ -134,14 +134,19 @@ class _ActivateDeactivateScreenState extends State<ActivateDeactivateScreen>
                       itemBuilder: (context, index) {
                         final doc = docs[index];
                         final data = doc.data() as Map<String, dynamic>;
-                        final name = data['full_name'] ?? 'Unknown';
-                        final isActive = data.containsKey('is_active') ? data['is_active'] == true : false;
-                        final isAdmin = data.containsKey('is_admin') ? data['is_admin'] == true : false;
+                        final name = data['full_name']?.toString().trim();
+                        final displayName = (name == null || name.isEmpty)
+                            ? data['phone_number'] ?? data['uid'] ?? 'Unknown'
+                            : name;
+                        final isActive = data['is_active'] == true;
+                        final isAdmin = data['is_admin'] == true;
+                        final phone = data['phone_number'] ?? '';
 
                         return Card(
                           color: isActive
                               ? Colors.green.withOpacity(0.1)
                               : Colors.red.withOpacity(0.1),
+                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                           child: ListTile(
                             leading: Icon(
                               isActive ? Icons.check_circle : Icons.cancel,
@@ -151,8 +156,11 @@ class _ActivateDeactivateScreenState extends State<ActivateDeactivateScreen>
                               children: [
                                 Expanded(
                                   child: Text(
-                                    name.toString(),
-                                    style: const TextStyle(color: Colors.white),
+                                    displayName,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w500,
+                                    ),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
@@ -168,6 +176,10 @@ class _ActivateDeactivateScreenState extends State<ActivateDeactivateScreen>
                                   ),
                               ],
                             ),
+                            subtitle: Text(
+                              phone,
+                              style: const TextStyle(color: Colors.white54),
+                            ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -182,19 +194,24 @@ class _ActivateDeactivateScreenState extends State<ActivateDeactivateScreen>
                                   },
                                 ),
                                 PopupMenuButton<String>(
-                                  icon: const Icon(Icons.more_vert,
-                                      color: Colors.white),
+                                  icon: const Icon(Icons.more_vert, color: Colors.white),
                                   onSelected: (value) {
                                     if (value == 'make_admin') {
                                       FirebaseFirestore.instance
                                           .collection('users')
                                           .doc(doc.id)
-                                          .update({'is_admin': true});
+                                          .update({
+                                            'is_admin': true,
+                                            'role': 'admin',
+                                          });
                                     } else if (value == 'remove_admin') {
                                       FirebaseFirestore.instance
                                           .collection('users')
                                           .doc(doc.id)
-                                          .update({'is_admin': false});
+                                          .update({
+                                            'is_admin': false,
+                                            'role': 'customer',
+                                          });
                                     }
                                   },
                                   itemBuilder: (context) => [

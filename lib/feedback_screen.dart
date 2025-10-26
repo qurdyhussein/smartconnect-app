@@ -13,33 +13,51 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   final TextEditingController _controller = TextEditingController();
   final uid = FirebaseAuth.instance.currentUser!.uid;
   String? editingId;
+  bool isSubmitting = false;
 
   void submitFeedback() async {
     final message = _controller.text.trim();
-    if (message.isEmpty) return;
+    if (message.isEmpty || isSubmitting) return;
 
-    if (editingId != null) {
-      // Edit existing feedback
-      await FirebaseFirestore.instance
-          .collection('feedbacks')
-          .doc(editingId)
-          .update({'message': message});
-    } else {
-      // Add new feedback with status
-      await FirebaseFirestore.instance.collection('feedbacks').add({
-        'user_id': uid,
-        'message': message,
-        'timestamp': Timestamp.now(),
-        'status': 'unread',
-      });
+    setState(() => isSubmitting = true);
+
+    try {
+      if (editingId != null) {
+        await FirebaseFirestore.instance
+            .collection('feedbacks')
+            .doc(editingId)
+            .update({'message': message});
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ Feedback updated successfully')),
+        );
+      } else {
+        await FirebaseFirestore.instance.collection('feedbacks').add({
+          'user_id': uid,
+          'message': message,
+          'timestamp': Timestamp.now(),
+          'status': 'unread',
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ Feedback sent successfully')),
+        );
+      }
+
+      _controller.clear();
+      setState(() => editingId = null);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('⚠️ Failed to submit feedback: $e')),
+      );
+    } finally {
+      setState(() => isSubmitting = false);
     }
-
-    _controller.clear();
-    setState(() => editingId = null);
   }
 
   void deleteFeedback(String id) async {
     await FirebaseFirestore.instance.collection('feedbacks').doc(id).delete();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('🗑️ Feedback deleted')),
+    );
   }
 
   void startEditing(String id, String message) {
@@ -58,12 +76,12 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Your Feedback'),
-        backgroundColor: const Color(0xFF6A1B9A), // Deep purple
+        backgroundColor: const Color(0xFF6A1B9A),
       ),
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFFF3E5F5), Color(0xFFE1BEE7)], // Light purple blend
+            colors: [Color(0xFFF3E5F5), Color(0xFFE1BEE7)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -83,14 +101,27 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              ElevatedButton.icon(
-                onPressed: submitFeedback,
-                icon: Icon(editingId != null ? Icons.edit : Icons.send),
-                label: Text(editingId != null ? 'Update Feedback' : 'Send Feedback'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF8E24AA), // Purple
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton.icon(
+                  onPressed: isSubmitting ? null : submitFeedback,
+                  icon: isSubmitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Icon(editingId != null ? Icons.edit : Icons.send),
+                  label: Text(editingId != null ? 'Update Feedback' : 'Send Feedback'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF8E24AA),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
                 ),
               ),
               const SizedBox(height: 20),
@@ -114,11 +145,13 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                     final docs = snapshot.data!.docs;
 
                     if (docs.isEmpty) {
-                      return const Text('You haven’t submitted any feedback yet.');
+                      return const Center(child: Text('You haven’t submitted any feedback yet.'));
                     }
 
-                    return ListView(
-                      children: docs.map((doc) {
+                    return ListView.builder(
+                      itemCount: docs.length,
+                      itemBuilder: (context, index) {
+                        final doc = docs[index];
                         final data = doc.data() as Map<String, dynamic>;
                         final message = data['message'] ?? '';
                         final timestamp = (data['timestamp'] as Timestamp).toDate();
@@ -131,8 +164,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                               'Sent on ${timestamp.day}/${timestamp.month}/${timestamp.year}',
                               style: const TextStyle(fontSize: 12),
                             ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
+                            trailing: Wrap(
+                              spacing: 4,
                               children: [
                                 IconButton(
                                   icon: const Icon(Icons.edit, color: Colors.deepPurple),
@@ -146,7 +179,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                             ),
                           ),
                         );
-                      }).toList(),
+                      },
                     );
                   },
                 ),

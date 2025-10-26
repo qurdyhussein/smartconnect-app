@@ -25,11 +25,13 @@ Future<void> exportPaymentsToCSV(
   csvBuffer.writeln('Customer,Amount,Method,Date');
 
   for (final doc in payments) {
-    final name = doc['customer_name'] ?? '';
-    final amount = doc['amount'] ?? '';
-    final method = doc['method'] ?? '';
-    final date = (doc['date'] as Timestamp).toDate();
-    final formattedDate = DateFormat('dd MMM yyyy, h:mm a').format(date);
+    final name = doc['buyer_name'] ?? 'Unknown';
+    final amount = (doc['amount'] ?? 0.0).toString();
+    final method = doc['channel'] ?? 'Unknown';
+    final date = (doc['created_at'] as Timestamp?)?.toDate();
+    final formattedDate = date != null
+        ? DateFormat('dd MMM yyyy, h:mm a').format(date)
+        : 'Unknown';
 
     csvBuffer.writeln('$name,$amount,$method,$formattedDate');
   }
@@ -40,7 +42,6 @@ Future<void> exportPaymentsToCSV(
   final file = File(path);
   await file.writeAsString(csvBuffer.toString());
 
-  // Onyesha chaguo la kufungua au kushare
   showModalBottomSheet(
     context: context,
     shape: const RoundedRectangleBorder(

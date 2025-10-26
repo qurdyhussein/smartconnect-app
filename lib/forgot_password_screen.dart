@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -12,7 +12,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final TextEditingController _phoneController = TextEditingController();
   bool _isLoading = false;
 
-  void _sendResetLink() async {
+  Future<void> _checkPhoneAndProceed() async {
     final phone = _phoneController.text.trim();
 
     if (phone.isEmpty) {
@@ -25,29 +25,30 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final email = '$phone@smartconnect.tz';
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where('phone_number', isEqualTo: phone)
+          .limit(1)
+          .get();
 
-      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Reset link sent to $email')),
-      );
-
-      Navigator.pop(context); // Go back to login screen
-    } on FirebaseAuthException catch (e) {
-      String message = 'Reset failed';
-      if (e.code == 'user-not-found') {
-        message = 'Account not found';
-      } else if (e.code == 'invalid-email') {
-        message = 'Invalid phone format';
+      if (snapshot.docs.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Account not found')),
+        );
+        setState(() => _isLoading = false);
+        return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      final userDoc = snapshot.docs.first;
+      final uid = userDoc.id;
+
+      Navigator.pushNamed(context, '/reset-password', arguments: {
+        'uid': uid,
+        'phone': phone,
+      });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Something went wrong')),
+        SnackBar(content: Text('Something went wrong: $e')),
       );
     } finally {
       setState(() => _isLoading = false);
@@ -84,11 +85,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     width: double.infinity,
                     height: 48,
                     child: ElevatedButton(
-                      onPressed: _sendResetLink,
+                      onPressed: _checkPhoneAndProceed,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.orange[700],
                       ),
-                      child: const Text('Send Reset Link'),
+                      child: const Text('Continue'),
                     ),
                   ),
                 ],

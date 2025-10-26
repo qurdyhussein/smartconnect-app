@@ -16,7 +16,7 @@ class _HomeAdminScreenState extends State<HomeAdminScreen> {
     final name = _networkController.text.trim();
     if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tafadhali andika jina la mtandao')),
+        const SnackBar(content: Text('Please enter a network name')),
       );
       return;
     }
@@ -32,15 +32,98 @@ class _HomeAdminScreenState extends State<HomeAdminScreen> {
       _networkController.clear();
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('✅ Mtandao umehifadhiwa')),
+        const SnackBar(content: Text('✅ Network saved successfully')),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('⚠️ Imeshindikana kuhifadhi')),
+        const SnackBar(content: Text('⚠️ Failed to save network')),
       );
     } finally {
       setState(() => _isSaving = false);
     }
+  }
+
+  Future<void> _assignPackages(String networkName) async {
+    final snapshot = await FirebaseFirestore.instance.collection('voucher_packages').get();
+    final allPackages = snapshot.docs.map((doc) => doc['name'].toString()).toList();
+
+    final assignmentSnapshot = await FirebaseFirestore.instance
+        .collection('network_packages')
+        .where('network', isEqualTo: networkName)
+        .limit(1)
+        .get();
+
+    List<String> selectedPackages = [];
+    String? docId;
+
+    if (assignmentSnapshot.docs.isNotEmpty) {
+      final data = assignmentSnapshot.docs.first.data();
+      selectedPackages = List<String>.from(data['packages']);
+      docId = assignmentSnapshot.docs.first.id;
+    }
+
+    showDialog(
+      context: context,
+      builder: (_) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text('Assign Packages to $networkName'),
+              content: SingleChildScrollView(
+                child: Column(
+                  children: allPackages.map((pkg) {
+                    final isSelected = selectedPackages.contains(pkg);
+                    return CheckboxListTile(
+                      title: Text(pkg),
+                      value: isSelected,
+                      onChanged: (val) {
+                        setState(() {
+                          if (val == true) {
+                            selectedPackages.add(pkg);
+                          } else {
+                            selectedPackages.remove(pkg);
+                          }
+                        });
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+                ElevatedButton(
+                  onPressed: () async {
+                    if (docId != null) {
+                      await FirebaseFirestore.instance.collection('network_packages').doc(docId).update({
+                        'packages': selectedPackages,
+                      });
+                    } else {
+                      await FirebaseFirestore.instance.collection('network_packages').add({
+                        'network': networkName,
+                        'packages': selectedPackages,
+                        'assigned_at': FieldValue.serverTimestamp(),
+                      });
+                    }
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('✅ Packages assigned')),
+                    );
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _deleteNetwork(String docId) async {
+    await FirebaseFirestore.instance.collection('networks').doc(docId).delete();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('🗑️ Network deleted')),
+    );
   }
 
   @override
@@ -89,6 +172,56 @@ class _HomeAdminScreenState extends State<HomeAdminScreen> {
                   backgroundColor: Colors.tealAccent,
                   foregroundColor: Colors.black,
                 ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              '📡 Existing Networks',
+              style: TextStyle(color: Colors.white, fontSize: 18),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('networks')
+                    .orderBy('created_at', descending: true)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+
+                  final docs = snapshot.data!.docs;
+                  if (docs.isEmpty) return const Text('No networks yet', style: TextStyle(color: Colors.white70));
+
+                  return ListView.builder(
+                    itemCount: docs.length,
+                    itemBuilder: (_, i) {
+                      final doc = docs[i];
+                      final name = doc['name'];
+                      final docId = doc.id;
+
+                      return Card(
+                        color: Colors.blueGrey.shade900,
+                        margin: const EdgeInsets.symmetric(vertical: 6),
+                        child: ListTile(
+                          title: Text(name, style: const TextStyle(color: Colors.white)),
+                          trailing: Wrap(
+                            spacing: 8,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit, color: Colors.tealAccent),
+                                onPressed: () => _assignPackages(name),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete, color: Colors.redAccent),
+                                onPressed: () => _deleteNetwork(docId),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
               ),
             ),
           ],

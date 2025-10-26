@@ -16,18 +16,17 @@ class _AddVoucherDialogState extends State<AddVoucherDialog> {
   String? selectedPackage;
   DateTime? expiryDate;
 
-  final List<String> packageOptions = [
-    '2 hours', '6 hours', '12 hours', '24 hours',
-    '3 days', 'weekly', 'monthly', 'semester',
-  ];
-
   List<String> networkOptions = [];
+  List<String> packageOptions = [];
+
   bool isLoadingNetworks = true;
+  bool isLoadingPackages = true;
 
   @override
   void initState() {
     super.initState();
     _loadNetworkOptions();
+    _loadPackageOptions();
   }
 
   Future<void> _loadNetworkOptions() async {
@@ -42,6 +41,22 @@ class _AddVoucherDialogState extends State<AddVoucherDialog> {
       setState(() => isLoadingNetworks = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('⚠️ Failed to load networks: $e')),
+      );
+    }
+  }
+
+  Future<void> _loadPackageOptions() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance.collection('voucher_packages').get();
+      final names = snapshot.docs.map((doc) => doc['name'].toString()).toList();
+      setState(() {
+        packageOptions = names;
+        isLoadingPackages = false;
+      });
+    } catch (e) {
+      setState(() => isLoadingPackages = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('⚠️ Failed to load packages: $e')),
       );
     }
   }
@@ -63,9 +78,11 @@ class _AddVoucherDialogState extends State<AddVoucherDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isLoading = isLoadingNetworks || isLoadingPackages;
+
     return AlertDialog(
       title: const Text('Add New Voucher'),
-      content: isLoadingNetworks
+      content: isLoading
           ? const SizedBox(height: 100, child: Center(child: CircularProgressIndicator()))
           : SingleChildScrollView(
               child: Form(

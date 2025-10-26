@@ -132,24 +132,25 @@ class AdminDashboardScreen extends StatelessWidget {
     final twoDaysLater = now.add(const Duration(days: 2));
 
     final vouchersStream = FirebaseFirestore.instance.collection('vouchers').snapshots();
-    final customersStream = FirebaseFirestore.instance
-        .collection('users')
-        .where('role', isEqualTo: 'customer')
-        .snapshots();
+    final usersStream = FirebaseFirestore.instance.collection('users').snapshots();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         StreamBuilder<QuerySnapshot>(
-          stream: customersStream,
+          stream: usersStream,
           builder: (context, snapshot) {
-            final total = snapshot.hasData ? snapshot.data!.docs.length : 0;
+            int totalCustomers = 0;
+            if (snapshot.hasData) {
+              final docs = snapshot.data!.docs;
+              totalCustomers = docs.where((d) => d['role'] == 'customer').length;
+            }
 
-            return _buildCardGrid([
+            return _animatedCardRow([
               MetricsCard(
                 icon: Icons.people,
                 label: 'Total Customers',
-                count: total,
+                count: totalCustomers,
                 color: Colors.orange,
               ),
             ]);
@@ -166,53 +167,64 @@ class AdminDashboardScreen extends StatelessWidget {
             final docs = snapshot.data!.docs;
             final total = docs.length;
             final assigned = docs.where((d) => d['status'] == 'assigned').length;
-            final used = docs.where((d) => d['status'] == 'used').length;
             final expiringSoon = docs.where((d) {
-              final expiry = (d['expiry'] as Timestamp).toDate();
-              return expiry.isBefore(twoDaysLater) && expiry.isAfter(now);
+              final expiry = (d['expiry'] as Timestamp?)?.toDate();
+              return expiry != null && expiry.isBefore(twoDaysLater) && expiry.isAfter(now);
             }).length;
 
-            return _buildCardGrid([
-              MetricsCard(
-                icon: Icons.vpn_key,
-                label: 'Total Vouchers',
-                count: total,
-                color: Colors.teal,
-              ),
-              MetricsCard(
-                icon: Icons.assignment_ind,
-                label: 'Assigned Vouchers',
-                count: assigned,
-                color: Colors.blueAccent,
-              ),
-              MetricsCard(
-                icon: Icons.check_circle,
-                label: 'Used Vouchers',
-                count: used,
-                color: Colors.green,
-              ),
-              MetricsCard(
-                icon: Icons.warning_amber,
-                label: 'Expiring Soon',
-                count: expiringSoon,
-                color: Colors.redAccent,
-              ),
-            ]);
+            return Column(
+              children: [
+                _animatedCardRow([
+                  MetricsCard(
+                    icon: Icons.vpn_key,
+                    label: 'Total Vouchers',
+                    count: total,
+                    color: Colors.teal,
+                  ),
+                  MetricsCard(
+                    icon: Icons.assignment_ind,
+                    label: 'Assigned Vouchers',
+                    count: assigned,
+                    color: Colors.blueAccent,
+                  ),
+                ]),
+                const SizedBox(height: 16),
+                _animatedCardRow([
+                  MetricsCard(
+                    icon: Icons.warning_amber,
+                    label: 'Expiring Soon',
+                    count: expiringSoon,
+                    color: Colors.redAccent,
+                  ),
+                ]),
+              ],
+            );
           },
         ),
       ],
     );
   }
 
-  Widget _buildCardGrid(List<Widget> cards) {
-    return GridView.count(
-      shrinkWrap: true,
-      crossAxisCount: 2,
-      crossAxisSpacing: 15,
-      mainAxisSpacing: 15,
-      childAspectRatio: 1.6,
-      physics: const NeverScrollableScrollPhysics(),
-      children: cards,
+  Widget _animatedCardRow(List<Widget> cards) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: cards.map((card) {
+        return Expanded(
+          child: AnimatedScale(
+            scale: 1.0,
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeOutBack,
+            child: AnimatedOpacity(
+              opacity: 1.0,
+              duration: const Duration(milliseconds: 500),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: card,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 

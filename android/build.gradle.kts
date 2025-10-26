@@ -1,3 +1,6 @@
+val compileSdkVersion by extra(35)
+val targetSdkVersion by extra(35)
+
 allprojects {
     repositories {
         google()

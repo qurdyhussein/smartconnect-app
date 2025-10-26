@@ -19,57 +19,65 @@ class _AdminPaymentsScreenState extends State<AdminPaymentsScreen> {
 
   Stream<QuerySnapshot> getPaymentsStream() {
     return FirebaseFirestore.instance
-        .collection('payments')
-        .orderBy('date', descending: true)
+        .collection('transactions')
+        .orderBy('created_at', descending: true)
         .snapshots();
   }
 
   List<DocumentSnapshot> filterPayments(List<DocumentSnapshot> allDocs) {
     return allDocs.where((doc) {
-      final name = doc['customer_name']?.toString().toLowerCase() ?? '';
-      final date = (doc['date'] as Timestamp).toDate();
-      final isSameMonth =
-          date.month == currentMonth.month && date.year == currentMonth.year;
-      return name.contains(searchQuery.toLowerCase()) && isSameMonth;
+      final status = doc['status']?.toString().toUpperCase() ?? '';
+      if (status != 'COMPLETED') return false;
+
+      final name = doc['buyer_name']?.toString().toLowerCase() ?? '';
+      final date = (doc['created_at'] as Timestamp?)?.toDate();
+      if (date == null) return false;
+
+      final isSameMonth = date.month == currentMonth.month && date.year == currentMonth.year;
+      final matchesQuery = searchQuery.trim().isEmpty || name.contains(searchQuery.toLowerCase());
+
+      return matchesQuery && isSameMonth;
     }).toList();
   }
 
   Widget summaryTile(String label, String value, IconData icon, Color color) {
-    return Flexible(
-      child: Container(
-        margin: const EdgeInsets.all(6),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.15),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            CircleAvatar(
-              backgroundColor: color.withOpacity(0.25),
-              child: Icon(icon, color: color),
+    return Container(
+      margin: const EdgeInsets.all(6),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          CircleAvatar(
+            backgroundColor: color.withOpacity(0.25),
+            child: Icon(icon, color: color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(label,
+                    style: const TextStyle(color: Colors.white70, fontSize: 14)),
+              ],
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(value,
-                      style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: color)),
-                  const SizedBox(height: 4),
-                  Text(label,
-                      style: const TextStyle(
-                          color: Colors.white70, fontSize: 14)),
-                ],
-              ),
-            )
-          ],
-        ),
+          )
+        ],
       ),
     );
   }
@@ -85,7 +93,7 @@ class _AdminPaymentsScreenState extends State<AdminPaymentsScreen> {
   @override
   Widget build(BuildContext context) {
     final months = getRecentMonths(6);
-    final selectedMonth = DateFormat('MMMM yyyy').format(currentMonth);
+    final selectedMonthLabel = DateFormat('MMMM yyyy').format(currentMonth);
 
     return Scaffold(
       backgroundColor: const Color(0xFF001F3F),
@@ -94,26 +102,26 @@ class _AdminPaymentsScreenState extends State<AdminPaymentsScreen> {
         backgroundColor: Colors.teal,
         actions: [
           PopupMenuButton<String>(
-  icon: const Icon(Icons.download),
-  onSelected: (value) async {
-    if (filteredPayments.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No payments to export.')),
-      );
-      return;
-    }
+            icon: const Icon(Icons.download),
+            onSelected: (value) async {
+              if (filteredPayments.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('No payments to export.')),
+                );
+                return;
+              }
 
-    if (value == 'csv') {
-      await exportPaymentsToCSV(filteredPayments, currentMonth, context);
-    } else if (value == 'pdf') {
-      await exportPaymentsToPDF(filteredPayments, currentMonth, context);
-    }
-  },
-  itemBuilder: (context) => [
-    const PopupMenuItem(value: 'csv', child: Text('Export as CSV')),
-    const PopupMenuItem(value: 'pdf', child: Text('Export as PDF')),
-  ],
-),
+              if (value == 'csv') {
+                await exportPaymentsToCSV(filteredPayments, currentMonth, context);
+              } else if (value == 'pdf') {
+                await exportPaymentsToPDF(filteredPayments, currentMonth, context);
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 'csv', child: Text('Export as CSV')),
+              PopupMenuItem(value: 'pdf', child: Text('Export as PDF')),
+            ],
+          ),
         ],
       ),
       body: StreamBuilder<QuerySnapshot>(
@@ -122,10 +130,13 @@ class _AdminPaymentsScreenState extends State<AdminPaymentsScreen> {
           filteredPayments = snapshot.hasData
               ? filterPayments(snapshot.data!.docs)
               : [];
+
           final totalPaid = filteredPayments.fold<double>(
               0.0, (sum, doc) => sum + (doc['amount'] ?? 0.0));
+
           final uniqueCustomers = filteredPayments
               .map((doc) => doc['customer_id'])
+              .where((id) => id != null)
               .toSet()
               .length;
 
@@ -134,13 +145,16 @@ class _AdminPaymentsScreenState extends State<AdminPaymentsScreen> {
             children: [
               Row(
                 children: [
-                  summaryTile('Total Paid', 'TSh ${totalPaid.toStringAsFixed(0)}',
-                      Icons.payments, Colors.tealAccent),
-                  summaryTile('Customers Paid', '$uniqueCustomers',
-                      Icons.people_alt, Colors.lightGreenAccent),
+                  Expanded(
+                    child: summaryTile('Total Paid', 'TSh ${totalPaid.toStringAsFixed(0)}',
+                        Icons.payments, Colors.tealAccent),
+                  ),
+                  Expanded(
+                    child: summaryTile('Customers Paid', '$uniqueCustomers',
+                        Icons.people_alt, Colors.lightGreenAccent),
+                  ),
                 ],
               ),
-              const SizedBox(height: 8),
               summaryTile('Payments This Month', '${filteredPayments.length}',
                   Icons.calendar_today, Colors.orangeAccent),
               const SizedBox(height: 16),
@@ -169,7 +183,7 @@ class _AdminPaymentsScreenState extends State<AdminPaymentsScreen> {
                   DropdownButton<String>(
                     dropdownColor: Colors.blueGrey[900],
                     style: const TextStyle(color: Colors.white),
-                    value: selectedMonth,
+                    value: selectedMonthLabel,
                     items: months.map((m) {
                       return DropdownMenuItem(
                         value: m,
@@ -199,7 +213,11 @@ class _AdminPaymentsScreenState extends State<AdminPaymentsScreen> {
                   itemCount: filteredPayments.length,
                   itemBuilder: (_, i) {
                     final data = filteredPayments[i];
-                    final date = (data['date'] as Timestamp).toDate();
+                    final date = (data['created_at'] as Timestamp?)?.toDate();
+                    final name = data['buyer_name'] ?? 'Unknown';
+                    final amount = data['amount'] ?? 0;
+                    final method = data['channel'] ?? 'Unknown';
+
                     return Card(
                       color: Colors.teal.withOpacity(0.2),
                       margin: const EdgeInsets.symmetric(vertical: 6),
@@ -207,12 +225,12 @@ class _AdminPaymentsScreenState extends State<AdminPaymentsScreen> {
                         leading: const Icon(Icons.receipt,
                             color: Colors.white70),
                         title: Text(
-                          '${data['customer_name']} - TSh ${data['amount']}',
+                          '$name - TSh $amount',
                           style: const TextStyle(
                               color: Colors.white, fontSize: 16),
                         ),
                         subtitle: Text(
-                          '${DateFormat('dd MMM, h:mm a').format(date)} • ${data['method']}',
+                          '${DateFormat('dd MMM, h:mm a').format(date!)} • $method',
                           style: const TextStyle(
                               color: Colors.white70, fontSize: 13),
                         ),

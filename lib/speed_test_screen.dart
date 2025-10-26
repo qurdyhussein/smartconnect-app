@@ -1,201 +1,196 @@
-import 'dart:async';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-class SpeedTestScreen extends StatefulWidget {
-  const SpeedTestScreen({super.key});
+class ManageVoucherPackagesScreen extends StatefulWidget {
+  const ManageVoucherPackagesScreen({super.key});
 
   @override
-  State<SpeedTestScreen> createState() => _SpeedTestScreenState();
+  State<ManageVoucherPackagesScreen> createState() => _ManageVoucherPackagesScreenState();
 }
 
-class _SpeedTestScreenState extends State<SpeedTestScreen> {
-  double downloadMbps = 0.0;
-  bool testing = false;
+class _ManageVoucherPackagesScreenState extends State<ManageVoucherPackagesScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _priceController = TextEditingController();
 
-  Future<void> startTest() async {
-    final connectivity = await Connectivity().checkConnectivity();
-    if (connectivity == ConnectivityResult.none) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No internet connection.')),
-      );
-      return;
+  Future<void> _addPackage() async {
+    if (_formKey.currentState!.validate()) {
+      final name = _nameController.text.trim();
+      final price = int.parse(_priceController.text.trim());
+
+      await FirebaseFirestore.instance.collection('voucher_packages').add({
+        'name': name,
+        'price': price,
+        'created_at': Timestamp.now(),
+      });
+
+      _nameController.clear();
+      _priceController.clear();
+      Navigator.of(context).pop();
     }
-
-    setState(() {
-      testing = true;
-      downloadMbps = 0.0;
-    });
-
-    try {
-      final url = Uri.parse('https://via.placeholder.com/1000x1000.jpg');
-      final stopwatch = Stopwatch()..start();
-
-      final response = await http.get(url);
-      stopwatch.stop();
-
-      if (response.statusCode == 200) {
-        final int bytes = response.bodyBytes.length;
-        final seconds = stopwatch.elapsedMilliseconds / 1000;
-        final double bits = bytes * 8;
-        final double mbps = (bits / seconds) / 1000000;
-
-        setState(() => downloadMbps = mbps);
-
-        final uid = FirebaseAuth.instance.currentUser?.uid;
-        if (uid != null) {
-          await FirebaseFirestore.instance.collection('speed_tests').add({
-            'uid': uid,
-            'download_speed': mbps,
-            'upload_speed': 0.0,
-            'tested_at': Timestamp.now(),
-          });
-        }
-      } else {
-        throw Exception('Failed to download file: ${response.statusCode}');
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Speed test failed: $e')),
-      );
-    }
-
-    setState(() => testing = false);
   }
 
-  Stream<QuerySnapshot> getHistoryStream() {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return const Stream.empty();
-    return FirebaseFirestore.instance
-        .collection('speed_tests')
-        .where('uid', isEqualTo: uid)
-        .orderBy('tested_at', descending: true)
-        .snapshots();
+  Future<void> _editPackage(String docId, String currentName, int currentPrice) async {
+    _nameController.text = currentName;
+    _priceController.text = currentPrice.toString();
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Edit Package'),
+        content: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              children: [
+                TextFormField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(labelText: 'Package Name'),
+                  validator: (val) => val == null || val.trim().isEmpty ? 'Enter name' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _priceController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Price (TZS)'),
+                  validator: (val) => val == null || int.tryParse(val) == null ? 'Enter valid price' : null,
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              if (_formKey.currentState!.validate()) {
+                final newName = _nameController.text.trim();
+                final newPrice = int.parse(_priceController.text.trim());
+
+                await FirebaseFirestore.instance.collection('voucher_packages').doc(docId).update({
+                  'name': newName,
+                  'price': newPrice,
+                });
+
+                _nameController.clear();
+                _priceController.clear();
+                Navigator.of(context).pop();
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deletePackage(String docId) async {
+    await FirebaseFirestore.instance.collection('voucher_packages').doc(docId).delete();
+  }
+
+  void _showAddDialog() {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Add Package'),
+        content: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              children: [
+                TextFormField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(labelText: 'Package Name'),
+                  validator: (val) => val == null || val.trim().isEmpty ? 'Enter name' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _priceController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Price (TZS)'),
+                  validator: (val) => val == null || int.tryParse(val) == null ? 'Enter valid price' : null,
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+          ElevatedButton(onPressed: _addPackage, child: const Text('Add')),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF001F3F),
       appBar: AppBar(
-        title: const Text('Internet Speed Test'),
-        backgroundColor: Colors.teal,
+        title: const Text('Manage Voucher Packages'),
+        backgroundColor: Colors.deepPurple,
+        actions: [
+          Tooltip(
+            message: 'Add Package',
+            child: IconButton(
+              icon: const Icon(Icons.add, color: Colors.white),
+              onPressed: _showAddDialog,
+            ),
+          ),
+        ],
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            children: [
-              _tile('Download Speed', '${downloadMbps.toStringAsFixed(2)} Mbps'),
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: testing ? null : startTest,
-                icon: const Icon(Icons.network_check),
-                label: Text(testing ? 'Testing...' : 'Start Test'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.teal,
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                ),
-              ),
-              const SizedBox(height: 32),
-              const Divider(color: Colors.white54),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: const [
-                      Icon(Icons.show_chart, color: Colors.white70, size: 20),
-                      SizedBox(width: 6),
-                      Text('Test History',
-                          style: TextStyle(color: Colors.white70, fontSize: 16)),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance.collection('voucher_packages').orderBy('created_at').snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final docs = snapshot.data!.docs;
+          if (docs.isEmpty) {
+            return const Center(child: Text('No packages yet.'));
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            itemCount: docs.length,
+            itemBuilder: (_, i) {
+              final data = docs[i];
+              final docId = data.id;
+              final map = data.data() as Map<String, dynamic>;
+              final name = map['name'];
+              final price = map['price'];
+
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                elevation: 2,
+                child: ListTile(
+                  title: Text(
+                    name,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  subtitle: Text(
+                    'TZS $price',
+                    style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit, color: Colors.blue),
+                        onPressed: () => _editPackage(docId, name, price),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        onPressed: () => _deletePackage(docId),
+                      ),
                     ],
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.download, color: Colors.white70),
-                    onPressed: () {
-                      // Export history (optional)
-                    },
-                  )
-                ],
-              ),
-              const SizedBox(height: 8),
-              StreamBuilder<QuerySnapshot>(
-                stream: getHistoryStream(),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const Padding(
-                      padding: EdgeInsets.only(top: 20),
-                      child: CircularProgressIndicator(color: Colors.teal),
-                    );
-                  }
-
-                  final docs = snapshot.data!.docs;
-                  if (docs.isEmpty) {
-                    return const Padding(
-                      padding: EdgeInsets.only(top: 16),
-                      child: Text(
-                        'No history yet.',
-                        style: TextStyle(color: Colors.white54),
-                      ),
-                    );
-                  }
-
-                  return ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: docs.length,
-                    itemBuilder: (_, i) {
-                      final data = docs[i];
-                      final testedAt =
-                          (data['tested_at'] as Timestamp).toDate();
-                      return Card(
-                        color: Colors.teal.shade600.withOpacity(0.8),
-                        child: ListTile(
-                          title: Text(
-                            '${data['download_speed'].toStringAsFixed(2)} Mbps ↓',
-                            style: const TextStyle(color: Colors.white),
-                          ),
-                          subtitle: Text(
-                            '$testedAt',
-                            style: const TextStyle(
-                                color: Colors.white70, fontSize: 12),
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }
-
-  Widget _tile(String label, String value) => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 24),
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        decoration: BoxDecoration(
-          color: Colors.teal.withOpacity(0.3),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label,
-                style: const TextStyle(color: Colors.white70, fontSize: 18)),
-            Text(value,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold)),
-          ],
-        ),
-      );
 }

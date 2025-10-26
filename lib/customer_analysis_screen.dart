@@ -5,12 +5,12 @@ import 'top_paying_customers.dart';
 import 'most_frequent_payers.dart';
 import 'inactive_customers.dart';
 import 'payment_method_breakdown.dart';
-import 'analysis_export_helper.dart'; // <- hakikisha hili lipo
+import 'analysis_export_helper.dart';
 
 class CustomerAnalysisScreen extends StatefulWidget {
-  final List<DocumentSnapshot> allPayments;
+  final List<DocumentSnapshot> allTransactions;
 
-  const CustomerAnalysisScreen({super.key, required this.allPayments});
+  const CustomerAnalysisScreen({super.key, required this.allTransactions});
 
   @override
   State<CustomerAnalysisScreen> createState() => _CustomerAnalysisScreenState();
@@ -25,9 +25,12 @@ class _CustomerAnalysisScreenState extends State<CustomerAnalysisScreen> {
     selectedMonth = DateTime.now();
   }
 
-  List<DocumentSnapshot> get filteredPayments {
-    return widget.allPayments.where((doc) {
-      final date = (doc['date'] as Timestamp).toDate();
+  List<DocumentSnapshot> get filteredTransactions {
+    return widget.allTransactions.where((doc) {
+      final raw = doc['created_at'];
+      final status = doc['status']?.toString().toUpperCase();
+      if (raw is! Timestamp || status != 'COMPLETED') return false;
+      final date = raw.toDate();
       return date.month == selectedMonth.month && date.year == selectedMonth.year;
     }).toList();
   }
@@ -56,7 +59,7 @@ class _CustomerAnalysisScreenState extends State<CustomerAnalysisScreen> {
             PopupMenuButton<String>(
               icon: const Icon(Icons.download),
               onSelected: (value) async {
-                if (filteredPayments.isEmpty) {
+                if (filteredTransactions.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('⚠️ No data to export')),
                   );
@@ -65,13 +68,13 @@ class _CustomerAnalysisScreenState extends State<CustomerAnalysisScreen> {
 
                 if (value == 'pdf') {
                   await exportAnalysisToPDF(
-                    payments: filteredPayments,
+                    transactions: filteredTransactions,
                     month: selectedMonth,
                     context: context,
                   );
                 } else if (value == 'csv') {
                   await exportAnalysisToCSV(
-                    payments: filteredPayments,
+                    transactions: filteredTransactions,
                     month: selectedMonth,
                     context: context,
                   );
@@ -99,8 +102,7 @@ class _CustomerAnalysisScreenState extends State<CustomerAnalysisScreen> {
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: Row(
                 children: [
-                  const Text('📅 Month:',
-                      style: TextStyle(color: Colors.white70)),
+                  const Text('📅 Month:', style: TextStyle(color: Colors.white70)),
                   const SizedBox(width: 12),
                   DropdownButton<String>(
                     dropdownColor: Colors.blueGrey[900],
@@ -114,8 +116,7 @@ class _CustomerAnalysisScreenState extends State<CustomerAnalysisScreen> {
                     }).toList(),
                     onChanged: (value) {
                       final index = months.indexOf(value!);
-                      final targetDate = DateTime(
-                          DateTime.now().year, DateTime.now().month - index);
+                      final targetDate = DateTime(DateTime.now().year, DateTime.now().month - index);
                       setState(() => selectedMonth = targetDate);
                     },
                   ),
@@ -126,10 +127,30 @@ class _CustomerAnalysisScreenState extends State<CustomerAnalysisScreen> {
             Expanded(
               child: TabBarView(
                 children: [
-                  TopPayingCustomers(payments: filteredPayments),
-                  MostFrequentPayers(payments: filteredPayments),
-                  InactiveCustomers(payments: filteredPayments),
-                  PaymentMethodBreakdown(payments: filteredPayments),
+                  SingleChildScrollView(
+                    child: TopPayingCustomers(
+                      month: selectedMonth,
+                      payments: filteredTransactions,
+                    ),
+                  ),
+                  SingleChildScrollView(
+                    child: MostFrequentPayers(
+                      month: selectedMonth,
+                      payments: filteredTransactions,
+                    ),
+                  ),
+                  SingleChildScrollView(
+                    child: InactiveCustomers(
+                      currentMonth: selectedMonth,
+                      payments: filteredTransactions,
+                    ),
+                  ),
+                  SingleChildScrollView(
+                    child: PaymentMethodBreakdown(
+                      month: selectedMonth,
+                      payments: filteredTransactions,
+                    ),
+                  ),
                 ],
               ),
             ),

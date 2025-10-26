@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shimmer/shimmer.dart';
 
 class BuyVoucherScreen extends StatefulWidget {
   const BuyVoucherScreen({super.key});
@@ -11,48 +12,28 @@ class BuyVoucherScreen extends StatefulWidget {
 class _BuyVoucherScreenState extends State<BuyVoucherScreen> {
   final _formKey = GlobalKey<FormState>();
   String? selectedNetwork;
-  String? customNetwork;
   String? selectedPackage;
-
-  final List<String> packageOptions = [
-    '2 hours',
-    '6 hours',
-    '12 hours',
-    '24 hours',
-    '3 days',
-    'weekly',
-    'monthly (1 device)',
-    'monthly (2 devices)',
-    'semester',
-  ];
-
-  final Map<String, int> packagePrices = {
-    '2 hours': 500,
-    '6 hours': 1000,
-    '12 hours': 1500,
-    '24 hours': 3000,
-    '3 days': 4000,
-    'weekly': 5000,
-    'monthly (1 device)': 15000,
-    'monthly (2 devices)': 20000,
-    'semester': 35000,
-  };
+  int? selectedPrice;
 
   List<String> networkOptions = [];
+  List<String> assignedPackages = [];
+
   bool isLoadingNetworks = true;
+  bool isLoadingPackages = false;
+  bool isLoadingPrice = false;
 
   @override
   void initState() {
     super.initState();
-    _loadNetworks();
+    _loadNetworkOptions();
   }
 
-  Future<void> _loadNetworks() async {
+  Future<void> _loadNetworkOptions() async {
     try {
       final snapshot = await FirebaseFirestore.instance.collection('networks').get();
-      final names = snapshot.docs.map((doc) => doc['name'].toString()).toList();
+      final networks = snapshot.docs.map((doc) => doc['name'].toString()).toList();
       setState(() {
-        networkOptions = [...names, 'Other'];
+        networkOptions = networks;
         isLoadingNetworks = false;
       });
     } catch (e) {
@@ -63,40 +44,114 @@ class _BuyVoucherScreenState extends State<BuyVoucherScreen> {
     }
   }
 
+  Future<void> _loadAssignedPackages(String network) async {
+    setState(() {
+      isLoadingPackages = true;
+      selectedPackage = null;
+      selectedPrice = null;
+      assignedPackages = [];
+    });
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('network_packages')
+          .where('network', isEqualTo: network)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        final data = snapshot.docs.first.data();
+        final packages = List<String>.from(data['packages']);
+        setState(() {
+          assignedPackages = packages;
+        });
+      }
+
+      setState(() => isLoadingPackages = false);
+    } catch (e) {
+      setState(() => isLoadingPackages = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('⚠️ Failed to load assigned packages: $e')),
+      );
+    }
+  }
+
+  Future<void> _loadPackagePrice(String packageName) async {
+    setState(() {
+      isLoadingPrice = true;
+      selectedPrice = null;
+    });
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('voucher_packages')
+          .where('name', isEqualTo: packageName)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        final price = int.parse(snapshot.docs.first['price'].toString());
+        setState(() {
+          selectedPrice = price;
+        });
+      }
+
+      setState(() => isLoadingPrice = false);
+    } catch (e) {
+      setState(() => isLoadingPrice = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('⚠️ Failed to load price: $e')),
+      );
+    }
+  }
+
   void _proceedToPayment() {
     if (_formKey.currentState!.validate()) {
-      final network = selectedNetwork == 'Other' ? customNetwork : selectedNetwork;
-      final package = selectedPackage;
-      final price = packagePrices[package]!;
-
       Navigator.pushNamed(
         context,
         '/payment',
         arguments: {
-          'network': network,
-          'package': package,
-          'price': price,
+          'network': selectedNetwork,
+          'package': selectedPackage,
+          'price': selectedPrice,
         },
       );
     }
   }
 
+  Widget _buildShimmerDropdown({required String label}) {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey.shade300,
+      highlightColor: Colors.grey.shade100,
+      child: Container(
+        height: 60,
+        margin: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade300,
+          borderRadius: BorderRadius.circular(4),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isLoading = isLoadingNetworks || isLoadingPackages;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Buy Voucher'),
         backgroundColor: const Color(0xFFFF7043),
       ),
-      body: isLoadingNetworks
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(20),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  children: [
-                    DropdownButtonFormField<String>(
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              isLoadingNetworks
+                  ? _buildShimmerDropdown(label: 'Select Network')
+                  : DropdownButtonFormField<String>(
                       value: selectedNetwork,
                       decoration: const InputDecoration(labelText: 'Select Network'),
                       items: networkOptions.map((network) {
@@ -105,52 +160,55 @@ class _BuyVoucherScreenState extends State<BuyVoucherScreen> {
                       onChanged: (val) {
                         setState(() {
                           selectedNetwork = val;
-                          customNetwork = null;
+                          selectedPackage = null;
+                          selectedPrice = null;
                         });
+                        if (val != null) _loadAssignedPackages(val);
                       },
                       validator: (val) => val == null ? 'Please select a network' : null,
                     ),
-                    if (selectedNetwork == 'Other') ...[
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        decoration: const InputDecoration(labelText: 'Enter Network Name'),
-                        onChanged: (val) => customNetwork = val,
-                        validator: (val) =>
-                            val == null || val.trim().isEmpty ? 'Enter network name' : null,
-                      ),
-                    ],
-                    const SizedBox(height: 20),
-                    DropdownButtonFormField<String>(
+              const SizedBox(height: 20),
+              isLoadingPackages
+                  ? _buildShimmerDropdown(label: 'Select Package')
+                  : DropdownButtonFormField<String>(
                       value: selectedPackage,
                       decoration: const InputDecoration(labelText: 'Select Package'),
-                      items: packageOptions.map((pkg) {
+                      items: assignedPackages.map((pkg) {
                         return DropdownMenuItem(value: pkg, child: Text(pkg));
                       }).toList(),
-                      onChanged: (val) => setState(() => selectedPackage = val),
+                      onChanged: (val) {
+                        setState(() {
+                          selectedPackage = val;
+                          selectedPrice = null;
+                        });
+                        if (val != null) _loadPackagePrice(val);
+                      },
                       validator: (val) => val == null ? 'Please select a package' : null,
                     ),
-                    const SizedBox(height: 20),
-                    if (selectedPackage != null)
-                      Text(
-                        'Price: TZS ${packagePrices[selectedPackage]}',
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
-                    const Spacer(),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton(
-                        onPressed: _proceedToPayment,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.deepPurple,
-                        ),
-                        child: const Text('Buy Now', style: TextStyle(color: Colors.white)),
-                      ),
-                    ),
-                  ],
+              const SizedBox(height: 20),
+              if (isLoadingPrice)
+                const CircularProgressIndicator()
+              else if (selectedPrice != null)
+                Text(
+                  'Price: TZS $selectedPrice',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              const Spacer(),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: _proceedToPayment,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.deepPurple,
+                  ),
+                  child: const Text('Buy Now', style: TextStyle(color: Colors.white)),
                 ),
               ),
-            ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

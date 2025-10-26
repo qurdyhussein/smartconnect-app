@@ -15,6 +15,7 @@ import 'package:smartconnect/buy_voucher_screen.dart'; // badilisha path kama fi
 import 'package:smartconnect/payment_screen.dart'; // badilisha path kulingana na project yako
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:smartconnect/reset_password_screen.dart';
 import 'feedback_screen.dart';
 import 'profile_screen.dart';
 import 'help_screen.dart';
@@ -59,7 +60,7 @@ class MyApp extends StatelessWidget {
         '/create': (_) => const CreateAccountScreen(),
         '/forgot': (context) => const ForgotPasswordScreen(),
         '/dashboard': (context) => const MainDashboard(),
-        '/speed-test': (context) => const SpeedTestScreen(),
+        '/speed-test': (context) => const ManageVoucherPackagesScreen(),
         '/payments' : (context) => const AdminPaymentsScreen(),
         '/login': (context) => const LoginScreen(),
         '/buy': (context) => const BuyVoucherScreen(),
@@ -67,6 +68,7 @@ class MyApp extends StatelessWidget {
         '/feedback': (context) => const FeedbackScreen(),
         '/profile': (context) => const ProfileScreen(),
         '/help': (context) => const HelpScreen(),
+        '/reset-password': (context) => const ResetPasswordScreen(),
 
 
         

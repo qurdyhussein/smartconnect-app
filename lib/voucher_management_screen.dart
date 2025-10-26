@@ -3,7 +3,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:smartconnect/add_voucher_dialog.dart';
 import 'package:smartconnect/edit_voucher_dialog.dart';
 import 'package:smartconnect/view_voucher_dialog.dart';
-import 'package:smartconnect/assign_voucher_dialog.dart';
 
 class VoucherManagementScreen extends StatefulWidget {
   const VoucherManagementScreen({super.key});
@@ -17,11 +16,25 @@ class _VoucherManagementScreenState extends State<VoucherManagementScreen> {
   String _searchTerm = '';
   String _statusFilter = 'all';
   String _packageFilter = 'all';
+  List<String> packageOptions = [];
 
-  final List<String> packageOptions = [
-    '2 hours', '6 hours', '12 hours', '24 hours',
-    '3 days', 'weekly', 'monthly', 'semester',
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _fetchPackageOptions();
+  }
+
+  void _fetchPackageOptions() async {
+    final snapshot = await FirebaseFirestore.instance.collection('voucher_packages').get();
+    final names = snapshot.docs.map((doc) {
+      final data = doc.data();
+      return data['name']?.toString() ?? '';
+    }).where((name) => name.isNotEmpty).toList();
+
+    setState(() {
+      packageOptions = names;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -75,7 +88,8 @@ class _VoucherManagementScreenState extends State<VoucherManagementScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               children: [
-                Expanded(
+                Flexible(
+                  flex: 1,
                   child: DropdownButtonFormField<String>(
                     value: _statusFilter,
                     decoration: const InputDecoration(labelText: 'Status'),
@@ -86,10 +100,12 @@ class _VoucherManagementScreenState extends State<VoucherManagementScreen> {
                   ),
                 ),
                 const SizedBox(width: 10),
-                Expanded(
+                Flexible(
+                  flex: 1,
                   child: DropdownButtonFormField<String>(
                     value: _packageFilter,
                     decoration: const InputDecoration(labelText: 'Package'),
+                    isExpanded: true,
                     items: ['all', ...packageOptions].map((pkg) {
                       return DropdownMenuItem(value: pkg, child: Text(pkg));
                     }).toList(),
@@ -145,8 +161,8 @@ class _VoucherManagementScreenState extends State<VoucherManagementScreen> {
                         subtitle: Text(
                           '${voucher['package']} • ${voucher['network']}\nExpires: ${expiry.toLocal().toString().split(' ')[0]}',
                         ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
+                        trailing: Wrap(
+                          spacing: 4,
                           children: [
                             IconButton(
                               icon: const Icon(Icons.edit, color: Colors.green),
@@ -158,16 +174,6 @@ class _VoucherManagementScreenState extends State<VoucherManagementScreen> {
                                 );
                               },
                             ),
-                            IconButton(
-                          icon: const Icon(Icons.person_add, color: Colors.teal),
-                          tooltip: 'Assign to customer',
-                          onPressed: () {
-                          showDialog(
-                          context: context,
-                          builder: (_) => AssignVoucherDialog(voucherDoc: doc),
-    );
-  },
-),
                             IconButton(
                               icon: const Icon(Icons.delete, color: Colors.red),
                               tooltip: 'Delete',

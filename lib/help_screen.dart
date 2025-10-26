@@ -35,7 +35,7 @@ class HelpScreen extends StatelessWidget {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 12),
-              _contactTile('+255 744 443 860'),
+              _contactTile('+255 676 424 664'),
               const SizedBox(height: 10),
               _contactTile('+255 766 929 683'),
               const SizedBox(height: 8),

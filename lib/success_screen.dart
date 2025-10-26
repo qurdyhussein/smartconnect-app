@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:smartconnect/booking_status_service.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'booking_status_service.dart';
 
 class SuccessScreen extends StatefulWidget {
   final String orderTrackingId;
@@ -20,103 +20,93 @@ class SuccessScreen extends StatefulWidget {
 }
 
 class _SuccessScreenState extends State<SuccessScreen> {
-  String? _statusMessage;
-  bool _isLoading = true;
   String? _voucherCode;
   DateTime? _expiry;
+
+  String? _transid;
+  String? _channel;
+  String? _msisdn;
+  String? _reference;
+  String _status = "PENDING";
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _checkAndAssignVoucher();
+    print("🚀 SuccessScreen opened for ${widget.orderTrackingId}");
+    _checkPaymentProgress();
   }
 
-  Duration getExpiryDuration(String package) {
-    switch (package.toLowerCase()) {
-      case '2 hours':
-        return const Duration(hours: 2);
-      case 'daily':
-        return const Duration(days: 1);
-      case 'weekly':
-        return const Duration(days: 7);
-      case 'monthly':
-        return const Duration(days: 30);
-      case 'semester':
-        return const Duration(days: 180);
-      default:
-        return const Duration(hours: 6);
-    }
-  }
+  Future<void> _checkPaymentProgress() async {
+    int attempts = 0;
+    const maxAttempts = 12;
 
-  Future<void> _checkAndAssignVoucher() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) {
+    while (attempts < maxAttempts && mounted) {
+      final status = await BookingStatusService.checkStatus(widget.orderTrackingId);
+      print("🔍 Status check: $status");
       setState(() {
-        _statusMessage = "User not logged in.";
-        _isLoading = false;
+        _status = status;
       });
-      return;
-    }
 
-    final status = await BookingStatusService.checkStatus(widget.orderTrackingId);
-
-    if (status == "COMPLETED") {
-      try {
-        final query = await FirebaseFirestore.instance
-            .collection('vouchers')
-            .where('status', isEqualTo: 'available')
-            .where('network', isEqualTo: widget.network)
-            .where('package', isEqualTo: widget.package)
-            .limit(1)
+      if (status == "COMPLETED") {
+        final snapshot = await FirebaseFirestore.instance
+            .collection('transactions')
+            .doc(widget.orderTrackingId)
             .get();
 
-        if (query.docs.isEmpty) {
+        final hasVoucher = snapshot.data()?['assigned_voucher'] != null;
+
+        if (hasVoucher) {
+          print("🎁 Voucher assigned: ${snapshot.data()?['assigned_voucher']}");
+          await _fetchDetails();
           setState(() {
-            _statusMessage = "No available voucher found.";
-            _isLoading = false;
+            _loading = false;
           });
           return;
+        } else {
+          print("🕓 Payment completed but voucher not yet assigned. Retrying...");
         }
-
-        final doc = query.docs.first;
-        final docRef = doc.reference;
-
-        final expiryDuration = getExpiryDuration(widget.package);
-        final expiryTime = DateTime.now().add(expiryDuration);
-
-        await docRef.update({
-          'status': 'assigned',
-          'assigned_to': uid,
-          'assigned_at': FieldValue.serverTimestamp(),
-          'expiry': expiryTime,
-        });
-
+      } else if (status == "FAIL" || status == "ERROR") {
         setState(() {
-          _voucherCode = doc['code'];
-          _expiry = expiryTime;
-          _isLoading = false;
+          _loading = false;
         });
-      } catch (e) {
-        setState(() {
-          _statusMessage = "Error assigning voucher: $e";
-          _isLoading = false;
-        });
+        return;
       }
-    } else if (status == "PENDING") {
+
+      await Future.delayed(const Duration(seconds: 5));
+      attempts++;
+    }
+
+    print("⚠️ Max attempts reached. Ending loading.");
+    setState(() {
+      _loading = false;
+    });
+  }
+
+  Future<void> _fetchDetails() async {
+    final details = await BookingStatusService.fetchDetails(widget.orderTrackingId);
+    if (details.isNotEmpty) {
       setState(() {
-        _statusMessage = "Malipo yako yanashughulikiwa...";
-        _isLoading = false;
-      });
-    } else {
-      setState(() {
-        _statusMessage = "Malipo hayakufanikiwa.";
-        _isLoading = false;
+        _transid = details['transid'];
+        _channel = details['channel'];
+        _msisdn = details['msisdn'];
+        _reference = details['reference'];
+        _voucherCode = details['assigned_voucher'] ?? details['transid'];
+        _expiry = details['assigned_at'] ?? DateTime.now().add(const Duration(days: 1));
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+
+    if (uid == null) {
+      return const Scaffold(
+        body: Center(child: Text("⚠️ User not logged in.")),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF3F4F6),
       appBar: AppBar(
@@ -125,44 +115,131 @@ class _SuccessScreenState extends State<SuccessScreen> {
         iconTheme: const IconThemeData(color: Colors.white),
         title: const Text('Payment Status', style: TextStyle(color: Colors.white)),
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: _isLoading
-              ? const CircularProgressIndicator()
-              : _voucherCode != null
-                  ? Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.check_circle, color: Colors.green, size: 80),
-                        const SizedBox(height: 20),
-                        const Text('Voucher Assigned!',
-                            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 12),
-                        Text('Code: $_voucherCode',
-                            style: const TextStyle(fontSize: 20, color: Colors.deepPurple)),
-                        const SizedBox(height: 8),
-                        Text('Network: ${widget.network}'),
-                        Text('Package: ${widget.package}'),
-                        Text('Expires: ${_expiry?.toLocal()}'),
-                        const SizedBox(height: 32),
-                        ElevatedButton(
-                          onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.deepPurple,
-                            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                          ),
-                          child: const Text('Done', style: TextStyle(color: Colors.white)),
-                        ),
-                      ],
-                    )
-                  : Text(
-                      _statusMessage ?? "Unknown status",
-                      style: const TextStyle(fontSize: 16),
-                      textAlign: TextAlign.center,
-                    ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+          child: Center(
+            child: _loading
+                ? Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      CircularProgressIndicator(color: Colors.deepPurple),
+                      SizedBox(height: 20),
+                      Text('⏳ Tunakagua malipo yako...', style: TextStyle(fontSize: 16)),
+                    ],
+                  )
+                : _status == "COMPLETED"
+                    ? _buildSuccessContent()
+                    : _buildFailureOrPending(),
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildSuccessContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        const Icon(Icons.check_circle, color: Colors.green, size: 90),
+        const SizedBox(height: 20),
+        const Text(
+          '✅ Malipo Yamekamilika!',
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 16),
+        const Text('Umepewa voucher ifuatayo:', style: TextStyle(fontSize: 16)),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.deepPurple.shade50,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.deepPurple),
+          ),
+          child: Center(
+            child: Text(
+              _voucherCode ?? "Voucher not available",
+              style: const TextStyle(
+                fontSize: 22,
+                color: Colors.deepPurple,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.5,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        _buildDetailsSection(),
+        const SizedBox(height: 40),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: () => Navigator.of(context).popUntil((route) => route.isFirst),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.deepPurple,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Done', style: TextStyle(color: Colors.white, fontSize: 16)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDetailsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('📦 Taarifa za Malipo:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+        Text('Network: ${widget.network}', style: const TextStyle(fontSize: 15)),
+        Text('Package: ${widget.package}', style: const TextStyle(fontSize: 15)),
+        if (_expiry != null)
+          Text('Expires: ${_expiry!.toLocal().toString().split('.').first}', style: const TextStyle(fontSize: 15)),
+        if (_channel != null)
+          Text('Paid via: $_channel', style: const TextStyle(fontSize: 15)),
+        if (_msisdn != null)
+          Text('Phone: $_msisdn', style: const TextStyle(fontSize: 15)),
+        if (_reference != null)
+          Text('Reference: $_reference', style: const TextStyle(fontSize: 15)),
+        if (_transid != null)
+          Text('Transaction ID: $_transid', style: const TextStyle(fontSize: 15)),
+      ],
+    );
+  }
+
+  Widget _buildFailureOrPending() {
+    final isFail = _status == "FAIL" || _status == "ERROR";
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          isFail ? Icons.error_outline : Icons.hourglass_top,
+          color: isFail ? Colors.red : Colors.orange,
+          size: 80,
+        ),
+        const SizedBox(height: 20),
+        Text(
+          isFail ? '⚠️ Malipo hayakufanikiwa.' : '⌛ Malipo yako yanashughulikiwa...',
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 16),
+        if (!isFail)
+          const Text('Please wait or try again later.', textAlign: TextAlign.center),
+        const SizedBox(height: 30),
+        ElevatedButton(
+          onPressed: () => Navigator.of(context).pop(),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.deepPurple,
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+          ),
+          child: const Text('Back', style: TextStyle(color: Colors.white)),
+        ),
+      ],
     );
   }
 }

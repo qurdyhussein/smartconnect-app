@@ -1,15 +1,13 @@
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
 android {
     namespace = "com.hussein.smartconnect"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 35
     ndkVersion = "27.0.12077973"
-
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -20,18 +18,28 @@ android {
         jvmTarget = JavaVersion.VERSION_11.toString()
     }
 
-   defaultConfig {
-    applicationId = "com.hussein.smartconnect"
-    minSdk = 21
-    targetSdk = 33 // au 34 ikiwa SDK imewekwa
-    versionCode = flutter.versionCode
-    versionName = flutter.versionName
-}
+    defaultConfig {
+        applicationId = "com.hussein.smartconnect"
+        minSdk = 21
+        targetSdk = 35
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
+
     buildTypes {
-        release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("debug") // Replace with production config if needed
+            isShrinkResources = true
+            isMinifyEnabled = true
+            proguardFiles.add(getDefaultProguardFile("proguard-android-optimize.txt"))
+            proguardFiles.add(file("proguard-rules.pro"))
+        }
+    }
+
+    // ✅ Hii ndiyo override ya dependency ya core-ktx
+    configurations.all {
+        resolutionStrategy {
+            force("androidx.core:core-ktx:1.12.0")
         }
     }
 }

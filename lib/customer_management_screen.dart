@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:smartconnect/view_customer_dialog.dart';
 
 class CustomerManagementScreen extends StatefulWidget {
   const CustomerManagementScreen({super.key});
@@ -55,11 +54,11 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
                         final total = docs.length;
                         final active = docs.where((doc) {
                           final data = doc.data() as Map<String, dynamic>;
-                          return (data['status'] ?? '') == 'active';
+                          return data['is_active'] == true;
                         }).length;
                         final inactive = docs.where((doc) {
                           final data = doc.data() as Map<String, dynamic>;
-                          return (data['status'] ?? '') == 'inactive';
+                          return data['is_active'] == false;
                         }).length;
 
                         return Row(
@@ -136,12 +135,6 @@ class _CustomerManagementScreenState extends State<CustomerManagementScreen> {
                                 color: Colors.white.withOpacity(0.05),
                                 margin: const EdgeInsets.symmetric(vertical: 6),
                                 child: ListTile(
-                                  onTap: () {
-                                    showDialog(
-                                      context: context,
-                                      builder: (_) => ViewCustomerDialog(document: doc),
-                                    );
-                                  },
                                   leading: const Icon(Icons.person, color: Colors.green),
                                   title: Text(
                                     data['full_name'] ?? 'Unknown',

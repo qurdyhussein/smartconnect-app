@@ -39,13 +39,69 @@ class _MainDashboardState extends State<MainDashboard> {
     });
   }
 
+  void _promptForPassword(BuildContext context) {
+    final controller = TextEditingController();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        backgroundColor: Colors.blueGrey[900],
+        title: const Text(
+          '🔐 Enter Access Password',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: TextField(
+          controller: controller,
+          obscureText: true,
+          keyboardType: TextInputType.number,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            hintText: 'Enter password',
+            hintStyle: TextStyle(color: Colors.white54),
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: Colors.redAccent)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+            onPressed: () {
+              final input = controller.text.trim();
+              if (input == '0910') {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const ActivateDeactivateScreen(),
+                  ),
+                );
+              } else {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('❌ Incorrect password'),
+                    backgroundColor: Colors.redAccent,
+                  ),
+                );
+              }
+            },
+            child: const Text('Enter', style: TextStyle(color: Colors.black)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF001F3F),
       body: Column(
         children: [
-          // Header ya neon
           Container(
             padding: const EdgeInsets.only(top: 48, bottom: 20),
             color: Colors.black,
@@ -62,17 +118,16 @@ class _MainDashboardState extends State<MainDashboard> {
                     letterSpacing: 1.5,
                     shadows: [
                       Shadow(
-                          color: Colors.cyanAccent,
-                          blurRadius: 12,
-                          offset: Offset(0, 0))
+                        color: Colors.cyanAccent,
+                        blurRadius: 12,
+                        offset: Offset(0, 0),
+                      )
                     ],
                   ),
                 ),
               ],
             ),
           ),
-
-          // Toolbar ya icons 4
           Container(
             padding: const EdgeInsets.symmetric(vertical: 12),
             color: Colors.blueGrey.shade900,
@@ -86,8 +141,6 @@ class _MainDashboardState extends State<MainDashboard> {
               ],
             ),
           ),
-
-          // Tile boxes
           Expanded(
             child: GridView.count(
               padding: const EdgeInsets.all(16),
@@ -96,74 +149,67 @@ class _MainDashboardState extends State<MainDashboard> {
               mainAxisSpacing: 16,
               children: [
                 _dashboardTile(
-                    title: 'Record Speed Test',
-                    icon: Icons.speed,
-                    color: Colors.teal,
-                    onTap: () {
-                      Navigator.pushNamed(context, '/speed-test');
-                    }),
+                  title: 'Manage Voucher Packages',
+                  icon: Icons.card_giftcard,
+                  color: Colors.teal,
+                  onTap: () {
+                    Navigator.pushNamed(context, '/speed-test');
+                  },
+                ),
                 _dashboardTile(
-                    title: 'Payments Made',
-                    icon: Icons.payments,
-                    color: Colors.deepPurple,
-                    onTap: () {
-                      Navigator.pushNamed(context, '/payments');
-                    }),
+                  title: 'Payments Made',
+                  icon: Icons.payments,
+                  color: Colors.deepPurple,
+                  onTap: () {
+                    Navigator.pushNamed(context, '/payments');
+                  },
+                ),
                 _dashboardTile(
-                    title: 'Customer Analysis',
-                    icon: Icons.analytics,
-                    color: Colors.orange,
-                    onTap: () async {
-                      showDialog(
-                        context: context,
-                        barrierDismissible: false,
-                        builder: (_) =>
-                            const Center(child: CircularProgressIndicator()),
-                      );
+                  title: 'Customer Analysis',
+                  icon: Icons.analytics,
+                  color: Colors.orange,
+                  onTap: () async {
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (_) => const Center(child: CircularProgressIndicator()),
+                    );
 
-                      try {
-                        final snapshot = await FirebaseFirestore.instance
-                            .collection('payments')
-                            .orderBy('date', descending: true)
-                            .get();
+                    try {
+                      final snapshot = await FirebaseFirestore.instance
+                          .collection('transactions')
+                          .orderBy('created_at', descending: true)
+                          .get();
 
-                        final allPayments = snapshot.docs;
+                      final allTransactions = snapshot.docs;
 
-                        Navigator.pop(context); // Funga loading dialog
+                      Navigator.pop(context);
 
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => CustomerAnalysisScreen(
-                                allPayments: allPayments),
-                          ),
-                        );
-                      } catch (e) {
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content:
-                                  Text('⚠️ Imeshindikana kupakia data')),
-                        );
-                      }
-                    }),
-                _dashboardTile(
-                    title: 'Activate / Deactivate',
-                    icon: Icons.power_settings_new,
-                    color: Colors.redAccent,
-                    onTap: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => const ActivateDeactivateScreen(),
+                          builder: (_) => CustomerAnalysisScreen(allTransactions: allTransactions),
                         ),
                       );
-                    }),
+                    } catch (e) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('⚠️ Failed to load transactions: $e')),
+                      );
+                    }
+                  },
+                ),
+                _dashboardTile(
+                  title: 'Activate / Deactivate',
+                  icon: Icons.power_settings_new,
+                  color: Colors.redAccent,
+                  onTap: () {
+                    _promptForPassword(context);
+                  },
+                ),
               ],
             ),
           ),
-
-          // Slideshow ya images
           Container(
             height: 160,
             margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -202,8 +248,7 @@ class _MainDashboardState extends State<MainDashboard> {
             const SizedBox(height: 10),
             Text(
               title,
-              style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.w500),
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
               textAlign: TextAlign.center,
             ),
           ],
@@ -271,25 +316,23 @@ class _MainDashboardState extends State<MainDashboard> {
       );
     }
 
-    // default icons
     return GestureDetector(
       onTap: () {
         if (iconType == 'home') {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const HomeAdminScreen()),
-          );
-        } else if (iconType == 'search') {
+          );         } else if (iconType == 'search') {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const SearchScreen()),
           );
         } else if (iconType == 'message') {
-  Navigator.push(
-    context,
-    MaterialPageRoute(builder: (_) => const AdminMessageScreen()),
-  );
-}
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const AdminMessageScreen()),
+          );
+        }
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),

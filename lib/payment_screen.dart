@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:smartconnect/payment_service.dart';
-import 'package:smartconnect/payment_webview.dart';
+import 'package:smartconnect/success_screen.dart';
+import 'package:smartconnect/zenopay_ux_helper.dart';
 
 class PaymentScreen extends StatefulWidget {
   const PaymentScreen({super.key});
@@ -35,11 +36,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       'image': 'assets/payments/airtel_card.png',
       'color': Color(0xFFE60000),
     },
-    {
-      'name': 'HaloPesa',
-      'image': 'assets/payments/halopesa_card.png',
-      'color': Color(0xFFFAA61A),
-    },
+    
   ];
 
   int selectedIndex = 0;
@@ -67,10 +64,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
     price = args['price'];
   }
 
-  void _payNow() async {
-    final selectedMethod = paymentMethods[selectedIndex]['name'];
+  Future<void> _payNow() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-
     if (uid == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('User not logged in')),
@@ -78,41 +73,66 @@ class _PaymentScreenState extends State<PaymentScreen> {
       return;
     }
 
-    if (_formKey.currentState!.validate()) {
-      final phone = _phoneController.text.trim();
+    if (!_formKey.currentState!.validate()) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Initiating Pesapal payment...')),
-      );
+    final phone = _phoneController.text.trim();
+    final selectedMethod = paymentMethods[selectedIndex]['name'];
 
-      final redirectUrl = await PaymentService.initiatePaymentViaBackend(
-        phone: phone,
-        amount: price
-        
-      );
+    final userDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+    final buyerName = userDoc.data()?['full_name'] ?? "SmartConnect User";
+    final buyerEmail = "$phone@smartconnect.tz";
 
-      if (redirectUrl == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Payment failed. Please try again.')),
-        );
-        return;
-      }
-
-      print('🌐 Redirect to: $redirectUrl');
-
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => PaymentWebView(url: redirectUrl),
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Expanded(child: Text('⏳ Sending payment request...')),
+          ],
         ),
+      ),
+    );
+
+    final orderId = await PaymentService.initiateZenopayPayment(
+      phone: phone,
+      amount: price,
+      buyerName: buyerName,
+      buyerEmail: buyerEmail,
+      customerId: uid,
+      network: network,
+      package: package,
+      paymentMethod: selectedMethod, // ✅ Added
+    );
+
+    Navigator.of(context).pop(); // Close loading
+
+    if (orderId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('❌ Payment initiation failed')),
       );
+      return;
     }
+
+    if (orderId == "PENDING_REQUEST_SENT") {
+      ZenopayUXHelper.showUSSDWaitingMessage(context);
+      return;
+    }
+
+    Navigator.of(context).pushReplacement(MaterialPageRoute(
+      builder: (_) => SuccessScreen(
+        orderTrackingId: orderId,
+        network: network,
+        package: package,
+      ),
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
     final bgColor = const Color(0xFFF3F4F6);
-    final selectedMethod = paymentMethods[selectedIndex]['name'];
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -229,19 +249,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 const SizedBox(height: 32),
                 SizedBox(
                   width: double.infinity,
-                  height: 48,
                   child: ElevatedButton(
                     onPressed: _payNow,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.deepPurple,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
-                    child: const Text(
-                      'Pay Now',
-                      style: TextStyle(color: Colors.white),
-                    ),
+                    child: const Text('Pay Now', style: TextStyle(fontSize: 16, color: Colors.white)),
                   ),
                 ),
               ],

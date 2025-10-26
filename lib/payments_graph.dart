@@ -12,19 +12,22 @@ class PaymentsGraph extends StatelessWidget {
     final end = DateTime(selectedMonth.year, selectedMonth.month + 1, 1);
 
     final query = await FirebaseFirestore.instance
-        .collection('payments')
-        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
-        .where('date', isLessThan: Timestamp.fromDate(end))
+        .collection('transactions')
+        .where('status', isEqualTo: 'COMPLETED')
+        .where('created_at', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+        .where('created_at', isLessThan: Timestamp.fromDate(end))
         .get();
 
     Map<String, double> dailyTotals = {};
 
     for (var doc in query.docs) {
-      final timestamp = doc['date'] as Timestamp;
-      final date = timestamp.toDate();
-      final dayKey = DateFormat('d MMM').format(date); // e.g. "6 Jul"
+      final timestamp = doc['created_at'] as Timestamp?;
+      final date = timestamp?.toDate();
+      if (date == null) continue;
 
+      final dayKey = DateFormat('d MMM').format(date); // e.g. "6 Jul"
       final amount = (doc['amount'] ?? 0.0).toDouble();
+
       dailyTotals[dayKey] = (dailyTotals[dayKey] ?? 0.0) + amount;
     }
 
@@ -38,7 +41,7 @@ class PaymentsGraph extends StatelessWidget {
       builder: (context, snapshot) {
         final data = snapshot.data ?? {};
 
-        if (!snapshot.hasData) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
 
@@ -57,13 +60,21 @@ class PaymentsGraph extends StatelessWidget {
           );
         }
 
-        final barGroups = data.entries.map((entry) {
-          final index = data.keys.toList().indexOf(entry.key);
+        final sortedKeys = data.keys.toList()
+          ..sort((a, b) {
+            final aDate = DateFormat('d MMM').parse(a);
+            final bDate = DateFormat('d MMM').parse(b);
+            return aDate.compareTo(bDate);
+          });
+
+        final barGroups = sortedKeys.map((key) {
+          final index = sortedKeys.indexOf(key);
+          final value = data[key]!;
           return BarChartGroupData(
             x: index,
             barRods: [
               BarChartRodData(
-                toY: entry.value,
+                toY: value,
                 color: Colors.tealAccent,
                 width: 14,
                 borderRadius: BorderRadius.circular(4),
@@ -76,8 +87,7 @@ class PaymentsGraph extends StatelessWidget {
           aspectRatio: 1.6,
           child: Card(
             elevation: 4,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             color: const Color(0xFF002A4A),
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -93,10 +103,14 @@ class PaymentsGraph extends StatelessWidget {
                       sideTitles: SideTitles(
                         showTitles: true,
                         getTitlesWidget: (value, _) {
-                          final label = data.keys.elementAt(value.toInt());
-                          return Text(label,
-                              style: const TextStyle(
-                                  color: Colors.white70, fontSize: 10));
+                          final label = sortedKeys[value.toInt()];
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              label,
+                              style: const TextStyle(color: Colors.white70, fontSize: 10),
+                            ),
+                          );
                         },
                       ),
                     ),

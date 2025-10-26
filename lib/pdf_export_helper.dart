@@ -65,19 +65,20 @@ Future<void> exportPaymentsToPDF(
         pw.Table.fromTextArray(
           headers: ['Customer', 'Amount', 'Method', 'Date'],
           data: payments.map((doc) {
-            final date = (doc['date'] as Timestamp).toDate();
-            return [
-              doc['customer_name'] ?? '',
-              'TSh ${doc['amount']}',
-              doc['method'] ?? '',
-              DateFormat('dd MMM yyyy, h:mm a').format(date)
-            ];
+            final name = doc['buyer_name'] ?? 'Unknown';
+            final amount = (doc['amount'] ?? 0.0).toString();
+            final method = doc['channel'] ?? 'Unknown';
+            final date = (doc['created_at'] as Timestamp?)?.toDate();
+            final formattedDate = date != null
+                ? DateFormat('dd MMM yyyy, h:mm a').format(date)
+                : 'Unknown';
+
+            return ['$name', 'TSh $amount', '$method', formattedDate];
           }).toList(),
           headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
           cellStyle: const pw.TextStyle(fontSize: 10),
           cellAlignment: pw.Alignment.centerLeft,
-          headerDecoration:
-              const pw.BoxDecoration(color: PdfColors.teal300),
+          headerDecoration: const pw.BoxDecoration(color: PdfColors.teal300),
           border: pw.TableBorder.all(width: 0.3, color: PdfColors.grey400),
         ),
         pw.SizedBox(height: 24),
@@ -96,7 +97,6 @@ Future<void> exportPaymentsToPDF(
   final file = File(path);
   await file.writeAsBytes(await pdf.save());
 
-  // Onyesha chaguo la kufungua au kushare
   showModalBottomSheet(
     context: context,
     shape: const RoundedRectangleBorder(
@@ -123,7 +123,7 @@ Future<void> exportPaymentsToPDF(
                 label: const Text('Share'),
                 onPressed: () {
                   Share.shareXFiles([XFile(path)],
-                      text: 'Payment Report - $monthTitle');
+                      text: 'SmartConnect PDF Report - $monthTitle');
                 },
               ),
             ],

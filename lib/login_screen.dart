@@ -52,22 +52,32 @@ class _LoginScreenState extends State<LoginScreen> {
         throw Exception('User data not found');
       }
 
-      final isActive = doc['is_active'] ?? true;
-      if (!isActive) {
+      final data = doc.data()!;
+      final isActive = data['is_active'] == true;
+      final status = data['status']?.toString().toLowerCase() ?? 'active';
+      final role = data['role']?.toString().toLowerCase() ?? 'customer';
+
+      if (!isActive || status == 'inactive') {
         await FirebaseAuth.instance.signOut();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Akaunti yako imezimwa. Tafadhali wasiliana na admin.'),
+            content: Text('🚫 Akaunti yako imezimwa. Tafadhali wasiliana na admin.'),
           ),
         );
         return;
       }
 
-      final role = doc['role'];
       if (role == 'admin') {
         Navigator.pushReplacementNamed(context, '/admin');
-      } else {
+      } else if (role == 'customer') {
         Navigator.pushReplacementNamed(context, '/customer');
+      } else {
+        await FirebaseAuth.instance.signOut();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ Role haijafafanuliwa vizuri. Tafadhali wasiliana na admin.'),
+          ),
+        );
       }
     } on FirebaseAuthException catch (e) {
       String message = 'Login failed';
